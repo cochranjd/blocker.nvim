@@ -1,4 +1,15 @@
 local M = {}
+local PRE_LINE = "**********"
+
+local function build_buffer()
+	vim.cmd("enew")
+	local buf = vim.api.nvim_get_current_buf()
+	vim.bo[buf].buftype = "nofile"
+	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].swapfile = false
+
+	return buf
+end
 
 local function convert_time_to_string(time)
 	return os.date("%I:%M%p", time)
@@ -29,25 +40,46 @@ function M.build_model()
 	M.max_block_index = counter - 1
 end
 
-function M.draw_blocks()
+function M.clear_buffer()
+	vim.bo[M.buffer].modifiable = true
+	vim.api.nvim_buf_set_lines(M.buffer, 0, -1, false, {})
+	vim.bo[M.buffer].modifiable = false
+end
+
+function M.build_lines()
+	local lines = {}
+
 	for i = 0, M.max_block_index do
 		local time_string = M.times[i]
 		local block = M.blocks[time_string]
-		print(time_string, block)
+
+		table.insert(lines, PRE_LINE)
+		table.insert(lines, time_string .. "  " .. block)
 	end
+
+	return lines
+end
+
+function M.render_lines(lines)
+	vim.bo[M.buffer].modifiable = true
+	vim.api.nvim_buf_set_lines(M.buffer, 0, -1, false, lines)
+	vim.bo[M.buffer].modifiable = false
 end
 
 function M.load()
-	vim.notify("Blocker loaded")
-	M.draw_blocks()
+	M.buffer = build_buffer()
+	M.clear_buffer()
+
+	local lines = M.build_lines()
+	M.render_lines(lines)
 end
 
 function M.setup(user_options)
 	M.options = {
 		start_hour = 9,
-		start_minutes = 0,
+		start_minute = 0,
 		end_hour = 17,
-		end_minutes = 0,
+		end_minute = 0,
 		division_in_minutes = 30,
 	}
 
@@ -55,6 +87,7 @@ function M.setup(user_options)
 	vim.api.nvim_create_user_command("Blocker", function()
 		require("blocker").load()
 	end, {})
+
 	M.build_model()
 end
 
