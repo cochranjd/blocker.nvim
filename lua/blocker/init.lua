@@ -1,7 +1,7 @@
 local M = {}
 
 local function convert_time_to_string(time)
-	return os.date("%Y/%m/%d %I:%M%p", time)
+	return os.date("%I:%M%p", time)
 end
 
 local function build_time(hour, minute)
