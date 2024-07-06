@@ -1,5 +1,6 @@
 local M = {}
-local PRE_LINE = "**********"
+local header_1 = "+:add  -:remove  .:repeat   r:reset"
+local header_2 = "c:copy x:cut     v:paste_block"
 
 local function build_buffer()
 	vim.cmd("enew")
@@ -9,6 +10,35 @@ local function build_buffer()
 	vim.bo[buf].swapfile = false
 
 	return buf
+end
+
+local function parse_time_from_string(time_string)
+	local hour, minute, period = string.match(time_string, "(%d%d):(%d%d)([apAP][mM])")
+
+	hour = tonumber(hour)
+	minute = tonumber(minute)
+
+	if period:lower() == "pm" and hour ~= 12 then
+		hour = hour + 12
+	elseif period:lower() == "am" and hour == 12 then
+		hour = 0
+	end
+
+	local today = os.date("*t")
+	local time_table = {
+		year = today.year,
+		month = today.month,
+		day = today.day,
+		hour = hour,
+		min = minute,
+		sec = 0,
+	}
+
+	return os.time(time_table)
+end
+
+local function offset_time(time, offset)
+	return time + (offset * 60)
 end
 
 local function convert_time_to_string(time)
@@ -49,11 +79,15 @@ end
 function M.build_lines()
 	local lines = {}
 
+	table.insert(lines, header_1)
+	table.insert(lines, header_2)
+	table.insert(lines, "")
+
 	for i = 0, M.max_block_index do
 		local time_string = M.times[i]
 		local block = M.blocks[time_string]
 
-		table.insert(lines, PRE_LINE)
+		table.insert(lines, "**********")
 		table.insert(lines, time_string .. "  " .. block)
 	end
 
@@ -66,12 +100,191 @@ function M.render_lines(lines)
 	vim.bo[M.buffer].modifiable = false
 end
 
-function M.load()
-	M.buffer = build_buffer()
-	M.clear_buffer()
-
+function M.refresh_output()
 	local lines = M.build_lines()
 	M.render_lines(lines)
+end
+
+function M.load()
+	M.buffer = build_buffer()
+
+	M.refresh_output()
+	M.setup_keymaps()
+end
+
+function M.setup_keymaps()
+	vim.api.nvim_buf_set_keymap(
+		M.buffer,
+		"n",
+		"+",
+		':lua require("blocker").handle_action("add")<CR>',
+		{ noremap = true, silent = true }
+	)
+	vim.api.nvim_buf_set_keymap(
+		M.buffer,
+		"n",
+		"-",
+		':lua require("blocker").handle_action("remove")<CR>',
+		{ noremap = true, silent = true }
+	)
+	vim.api.nvim_buf_set_keymap(
+		M.buffer,
+		"n",
+		".",
+		':lua require("blocker").handle_action("repeat_previous")<CR>',
+		{ noremap = true, silent = true }
+	)
+	vim.api.nvim_buf_set_keymap(
+		M.buffer,
+		"n",
+		"c",
+		':lua require("blocker").handle_action("copy")<CR>',
+		{ noremap = true, silent = true }
+	)
+	vim.api.nvim_buf_set_keymap(
+		M.buffer,
+		"n",
+		"x",
+		':lua require("blocker").handle_action("cut")<CR>',
+		{ noremap = true, silent = true }
+	)
+	vim.api.nvim_buf_set_keymap(
+		M.buffer,
+		"n",
+		"v",
+		':lua require("blocker").handle_action("paste")<CR>',
+		{ noremap = true, silent = true }
+	)
+	vim.api.nvim_buf_set_keymap(
+		M.buffer,
+		"n",
+		"r",
+		':lua require("blocker").handle_action("reset")<CR>',
+		{ noremap = true, silent = true }
+	)
+end
+
+function M.get_time_string_for_current_line()
+	local cursor_line = vim.fn.line(".") - 1
+	local line_content = vim.api.nvim_buf_get_lines(M.buffer, cursor_line, cursor_line + 1, false)[1]
+	return string.match(line_content, "^(%d%d:%d%d[AP]M).*")
+end
+
+function M.build_action_lookups()
+	M.actions = {
+		add = M.add_action,
+		remove = M.remove_action,
+		repeat_previous = M.repeat_previous_action,
+		copy = M.copy_action,
+		cut = M.cut_action,
+		paste = M.paste_action,
+		reset = M.reset_action,
+	}
+end
+
+function M.handle_action(action)
+	M.actions[action]()
+end
+
+function M.update_block(time_string, content)
+	M.blocks[time_string] = content
+	M.refresh_output()
+end
+
+function M.add_action()
+	local time_string = M.get_time_string_for_current_line()
+	if time_string == nil then
+		return
+	end
+
+	-- Get the block content
+	local content = vim.fn.input("Enter block content: ")
+	if content == nil or content == "" then
+		return
+	end
+
+	M.update_block(time_string, content)
+end
+
+function M.remove_action()
+	local time_string = M.get_time_string_for_current_line()
+	if time_string == nil then
+		return
+	end
+
+	M.update_block(time_string, "")
+end
+
+function M.repeat_previous_action()
+	local time_string = M.get_time_string_for_current_line()
+	if time_string == nil then
+		return
+	end
+
+	local previous_time_string = M.get_offset_time_string(time_string, -1)
+	local previous_content = M.blocks[previous_time_string]
+	M.update_block(time_string, previous_content)
+
+	local next_time_string = M.get_offset_time_string(time_string, 1)
+	M.advance_cursor_until(next_time_string)
+end
+
+function M.advance_cursor_until(next_time_string)
+	local total_lines = vim.api.nvim_buf_line_count(M.buffer)
+	local pattern = "^" .. next_time_string
+
+	for i = vim.fn.line(".") - 1, total_lines - 1 do
+		local line = vim.api.nvim_buf_get_lines(M.buffer, i, i + 1, false)[1]
+		if line:match(pattern) then
+			vim.api.nvim_win_set_cursor(0, { i + 1, 0 })
+			return
+		end
+	end
+end
+
+function M.copy_action()
+	local time_string = M.get_time_string_for_current_line()
+	if time_string == nil then
+		return
+	end
+
+	M.stashed_content = M.blocks[time_string]
+end
+
+function M.cut_action()
+	local time_string = M.get_time_string_for_current_line()
+	if time_string == nil then
+		return
+	end
+
+	M.stashed_content = M.blocks[time_string]
+	M.update_block(time_string, "")
+end
+
+function M.paste_action()
+	if M.stashed_content == nil or M.stashed_content == "" then
+		return
+	end
+
+	local time_string = M.get_time_string_for_current_line()
+	if time_string == nil then
+		return
+	end
+
+	M.update_block(time_string, M.stashed_content)
+end
+
+function M.reset_action()
+	for time_string in pairs(M.blocks) do
+		M.blocks[time_string] = ""
+	end
+	M.refresh_output()
+end
+
+function M.get_offset_time_string(time_string, offset)
+	local time = parse_time_from_string(time_string)
+	local previous_time = offset_time(time, offset * M.options.division_in_minutes)
+	return convert_time_to_string(previous_time)
 end
 
 function M.setup(user_options)
@@ -88,7 +301,9 @@ function M.setup(user_options)
 		require("blocker").load()
 	end, {})
 
+	M.stashed_content = nil
 	M.build_model()
+	M.build_action_lookups()
 end
 
 return M
