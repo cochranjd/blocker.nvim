@@ -1,6 +1,40 @@
+local serpent = require("blocker.serpent")
 local M = {}
 local header_1 = "+:add  -:remove  .:repeat   r:reset"
 local header_2 = "c:copy x:cut     v:paste_block"
+
+local function find_matching_time_label(previous_half_hour)
+	local buf = vim.api.nvim_get_current_buf()
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+
+	for i, line in ipairs(lines) do
+		local time_label = string.match(line, "(%d%d:%d%d %a%a)")
+		if time_label == previous_half_hour then
+			return i - 1 -- Return the line number (0-based)
+		end
+	end
+
+	return nil -- Return nil if no match is found
+end
+
+local function get_previous_half_hour()
+	local current_time = os.date("*t")
+	local minute = current_time.min < 30 and 0 or 30
+	local hour = current_time.hour
+	local period = hour >= 12 and "PM" or "AM"
+
+	if hour > 12 then
+		hour = hour - 12
+	elseif hour == 0 then
+		hour = 12
+	end
+
+	return string.format("%02d:%02d %s", hour, minute, period)
+end
+
+local function setup_highlight(color)
+	vim.cmd("highlight NowHighlight guifg=" .. color .. " gui=bold ctermfg=198 cterm=bold ctermbg=black")
+end
 
 local function build_buffer()
 	vim.cmd("enew")
@@ -42,12 +76,25 @@ local function offset_time(time, offset)
 end
 
 local function convert_time_to_string(time)
-	return os.date("%I:%M%p", time)
+	return os.date("%I:%M %p", time)
 end
 
 local function build_time(hour, minute)
 	local today = os.date("*t")
 	return os.time({ year = today.year, month = today.month, day = today.day, hour = hour, min = minute, sec = 0 })
+end
+
+function M.update_now_highlight()
+	local previous_half_hour = get_previous_half_hour()
+	local matching_line = find_matching_time_label(previous_half_hour)
+
+	if matching_line and M.namespace_id then
+		local buf = vim.api.nvim_get_current_buf()
+		-- Remove any existing highlights in the namespace
+		vim.api.nvim_buf_clear_namespace(buf, M.namespace_id, 0, -1)
+		-- Add the highlight to the matching line
+		vim.api.nvim_buf_add_highlight(buf, M.namespace_id, "NowHighlight", matching_line, 0, -1)
+	end
 end
 
 function M.build_model()
@@ -85,7 +132,7 @@ function M.build_lines()
 
 	for i = 0, M.max_block_index do
 		local time_string = M.times[i]
-		local block = M.blocks[time_string]
+		local block = M.blocks[time_string] or ""
 
 		table.insert(lines, "**********")
 		table.insert(lines, time_string .. "  " .. block)
@@ -106,10 +153,14 @@ function M.refresh_output()
 end
 
 function M.load()
+	setup_highlight(M.options.now_color)
+	M.load_from_file()
 	M.buffer = build_buffer()
+	M.namespace_id = vim.api.nvim_create_namespace("TimeBlockNamespace")
 
 	M.refresh_output()
 	M.setup_keymaps()
+	M.setup_now_highlight()
 end
 
 function M.setup_keymaps()
@@ -164,10 +215,22 @@ function M.setup_keymaps()
 	)
 end
 
+function M.setup_now_highlight()
+	local timer = vim.loop.new_timer()
+	timer:start(0, 30000, vim.schedule_wrap(M.update_now_highlight))
+
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		callback = function()
+			timer:stop()
+			timer:close()
+		end,
+	})
+end
+
 function M.get_time_string_for_current_line()
 	local cursor_line = vim.fn.line(".") - 1
 	local line_content = vim.api.nvim_buf_get_lines(M.buffer, cursor_line, cursor_line + 1, false)[1]
-	return string.match(line_content, "^(%d%d:%d%d[AP]M).*")
+	return string.match(line_content, "^(%d%d:%d%d [AP]M).*")
 end
 
 function M.build_action_lookups()
@@ -184,6 +247,7 @@ end
 
 function M.handle_action(action)
 	M.actions[action]()
+	M.write_to_file()
 end
 
 function M.update_block(time_string, content)
@@ -287,6 +351,32 @@ function M.get_offset_time_string(time_string, offset)
 	return convert_time_to_string(previous_time)
 end
 
+function M.write_to_file()
+	local filename = vim.fn.expand(M.options.blockfile)
+	local file = io.open(filename, "w")
+	if not file then
+		return
+	end
+
+	local serializedData = serpent.dump(M.blocks)
+	file:write(serializedData)
+	file:close()
+end
+
+function M.load_from_file()
+	local filename = vim.fn.expand(M.options.blockfile)
+	local file = io.open(filename, "r")
+	if not file then
+		return
+	end
+
+	local serialized_data = file:read("*all")
+	file:close()
+
+	local loadFunction = load(serialized_data)
+	M.blocks = loadFunction()
+end
+
 function M.setup(user_options)
 	M.options = {
 		start_hour = 9,
@@ -294,6 +384,8 @@ function M.setup(user_options)
 		end_hour = 17,
 		end_minute = 0,
 		division_in_minutes = 30,
+		blockfile = "~/.blocker.nvim/blocks.text",
+		now_color = "#ff007c",
 	}
 
 	M.options = vim.tbl_extend("force", M.options, user_options)
