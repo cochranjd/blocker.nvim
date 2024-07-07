@@ -1,7 +1,7 @@
 local serpent = require("blocker.serpent")
 local M = {}
-local header_1 = "+:add  -:remove  .:repeat   r:reset"
-local header_2 = "c:copy x:cut     v:paste_block"
+local header_1 = "<cr>:add  -:remove  .:repeat   r:reset"
+local header_2 = "c:copy    x:cut     v:paste_block"
 
 local function find_matching_time_label(previous_half_hour)
 	local buf = vim.api.nvim_get_current_buf()
@@ -47,7 +47,7 @@ local function build_buffer()
 end
 
 local function parse_time_from_string(time_string)
-	local hour, minute, period = string.match(time_string, "(%d%d):(%d%d)([apAP][mM])")
+	local hour, minute, period = string.match(time_string, "(%d%d):(%d%d) ([apAP][mM])")
 
 	hour = tonumber(hour)
 	minute = tonumber(minute)
@@ -134,7 +134,7 @@ function M.build_lines()
 		local time_string = M.times[i]
 		local block = M.blocks[time_string] or ""
 
-		table.insert(lines, "**********")
+		table.insert(lines, "----------")
 		table.insert(lines, time_string .. "  " .. block)
 	end
 
@@ -167,7 +167,7 @@ function M.setup_keymaps()
 	vim.api.nvim_buf_set_keymap(
 		M.buffer,
 		"n",
-		"+",
+		"<CR>",
 		':lua require("blocker").handle_action("add")<CR>',
 		{ noremap = true, silent = true }
 	)
