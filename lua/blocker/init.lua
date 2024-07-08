@@ -150,6 +150,7 @@ end
 function M.refresh_output()
 	local lines = M.build_lines()
 	M.render_lines(lines)
+	M.update_now_highlight()
 end
 
 function M.load()
@@ -188,21 +189,21 @@ function M.setup_keymaps()
 	vim.api.nvim_buf_set_keymap(
 		M.buffer,
 		"n",
-		"c",
+		"yy",
 		':lua require("blocker").handle_action("copy")<CR>',
 		{ noremap = true, silent = true }
 	)
 	vim.api.nvim_buf_set_keymap(
 		M.buffer,
 		"n",
-		"x",
+		"dd",
 		':lua require("blocker").handle_action("cut")<CR>',
 		{ noremap = true, silent = true }
 	)
 	vim.api.nvim_buf_set_keymap(
 		M.buffer,
 		"n",
-		"v",
+		"p",
 		':lua require("blocker").handle_action("paste")<CR>',
 		{ noremap = true, silent = true }
 	)
