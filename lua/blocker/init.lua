@@ -353,7 +353,8 @@ function M.get_offset_time_string(time_string, offset)
 end
 
 function M.write_to_file()
-	local filename = vim.fn.expand(M.options.blockfile)
+	local date = os.date("%Y-%m-%d")
+	local filename = vim.fn.expand(M.options.blockfile_dir .. "/" .. date .. ".txt")
 	local file = io.open(filename, "w")
 	if not file then
 		return
@@ -363,9 +364,21 @@ function M.write_to_file()
 	file:write(serializedData)
 	file:close()
 end
+-- function M.write_to_file()
+-- 	local filename = vim.fn.expand(M.options.blockfile)
+-- 	local file = io.open(filename, "w")
+-- 	if not file then
+-- 		return
+-- 	end
+--
+-- 	local serializedData = serpent.dump(M.blocks)
+-- 	file:write(serializedData)
+-- 	file:close()
+-- end
 
 function M.load_from_file()
-	local filename = vim.fn.expand(M.options.blockfile)
+	local date = os.date("%Y-%m-%d")
+	local filename = vim.fn.expand(M.options.blockfile_dir .. "/" .. date .. ".txt")
 	local file = io.open(filename, "r")
 	if not file then
 		return
@@ -377,6 +390,19 @@ function M.load_from_file()
 	local loadFunction = load(serialized_data)
 	M.blocks = loadFunction()
 end
+-- function M.load_from_file()
+-- 	local filename = vim.fn.expand(M.options.blockfile)
+-- 	local file = io.open(filename, "r")
+-- 	if not file then
+-- 		return
+-- 	end
+--
+-- 	local serialized_data = file:read("*all")
+-- 	file:close()
+--
+-- 	local loadFunction = load(serialized_data)
+-- 	M.blocks = loadFunction()
+-- end
 
 function M.setup(user_options)
 	M.options = {
@@ -385,11 +411,13 @@ function M.setup(user_options)
 		end_hour = 17,
 		end_minute = 0,
 		division_in_minutes = 30,
-		blockfile = "~/.blocker.nvim/blocks.text",
+		-- blockfile = "~/.blocker.nvim/blocks.text",
+		blockfile_dir = "~/.blocker.nvim",
 		now_color = "#ff007c",
 	}
 
 	M.options = vim.tbl_extend("force", M.options, user_options)
+	vim.fn.mkdir(vim.fn.expand(M.options.blockfile_dir), "p")
 	vim.api.nvim_create_user_command("Blocker", function()
 		require("blocker").load()
 	end, {})
