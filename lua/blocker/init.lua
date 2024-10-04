@@ -343,6 +343,12 @@ function M.reset_action()
 	for time_string in pairs(M.blocks) do
 		M.blocks[time_string] = ""
 	end
+	-- Write the reset state to the current day's file
+	M.write_to_file()
+
+	-- Reload from file to ensure changes are synced with the correct file
+	M.load_from_file()
+
 	M.refresh_output()
 end
 
@@ -352,46 +358,70 @@ function M.get_offset_time_string(time_string, offset)
 	return convert_time_to_string(previous_time)
 end
 
+local function get_blockfile_path()
+	local filename = os.date("%Y-%m-%d") .. ".txt" -- Example: 2024-10-04.txt
+	return vim.fn.expand(M.options.blockfile_dir .. "/" .. filename)
+end
+
 function M.write_to_file()
-	local date = os.date("%Y-%m-%d")
-	local filename = vim.fn.expand(M.options.blockfile_dir .. "/" .. date .. ".txt")
+	-- Dynamically get the correct file path
+	local filename = get_blockfile_path()
+
 	local file = io.open(filename, "w")
 	if not file then
 		return
 	end
 
-	local serializedData = serpent.dump(M.blocks)
-	file:write(serializedData)
+	-- Write each time block on a new line
+	for time_string, task in pairs(M.blocks) do
+		file:write(time_string .. ": " .. task .. "\n")
+	end
 	file:close()
 end
--- function M.write_to_file()
--- 	local filename = vim.fn.expand(M.options.blockfile)
--- 	local file = io.open(filename, "w")
--- 	if not file then
--- 		return
--- 	end
---
--- 	local serializedData = serpent.dump(M.blocks)
--- 	file:write(serializedData)
--- 	file:close()
--- end
 
 function M.load_from_file()
-	local date = os.date("%Y-%m-%d")
-	local filename = vim.fn.expand(M.options.blockfile_dir .. "/" .. date .. ".txt")
+	-- Dynamically get the correct file path
+	local filename = get_blockfile_path()
+
 	local file = io.open(filename, "r")
 	if not file then
 		return
 	end
 
-	local serialized_data = file:read("*all")
-	file:close()
+	-- Clear the current blocks
+	M.blocks = {}
 
-	local loadFunction = load(serialized_data)
-	M.blocks = loadFunction()
+	-- Read each line and split by the first colon to extract time_string and task
+	for line in file:lines() do
+		-- local time_string, task = line:match("^(.-):%s*(.*)$")
+		local time_string, task = line:match("^(%d%d:%d%d [APM]+):%s*(.*)$")
+
+		if time_string and task then
+			M.blocks[time_string] = task
+		end
+	end
+
+	file:close()
 end
+
+-- function M.write_to_file()
+-- 	-- Dynamically get the correct file path
+-- 	local filename = get_blockfile_path()
+--
+-- 	local file = io.open(filename, "w")
+-- 	if not file then
+-- 		return
+-- 	end
+--
+-- 	local serialized_data = serpent.dump(M.blocks)
+-- 	file:write(serialized_data)
+-- 	file:close()
+-- end
+--
 -- function M.load_from_file()
--- 	local filename = vim.fn.expand(M.options.blockfile)
+-- 	-- Dynamically get the correct file path
+-- 	local filename = get_blockfile_path()
+--
 -- 	local file = io.open(filename, "r")
 -- 	if not file then
 -- 		return
@@ -401,7 +431,9 @@ end
 -- 	file:close()
 --
 -- 	local loadFunction = load(serialized_data)
--- 	M.blocks = loadFunction()
+-- 	if loadFunction then
+-- 		M.blocks = loadFunction()
+-- 	end
 -- end
 
 function M.setup(user_options)
