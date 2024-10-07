@@ -32,6 +32,34 @@ local function get_previous_half_hour()
 	return string.format("%02d:%02d %s", hour, minute, period)
 end
 
+-- Convert 12-hour time to 24-hour format
+local function convert_to_24_hour(time_string)
+	local hour, minute, period = time_string:match("(%d%d):(%d%d) ([APM]+)")
+	hour = tonumber(hour)
+	minute = tonumber(minute)
+
+	if period == "PM" and hour < 12 then
+		hour = hour + 12
+	elseif period == "AM" and hour == 12 then
+		hour = 0 -- Midnight case (12:00 AM)
+	end
+
+	return string.format("%02d:%02d", hour, minute)
+end
+
+-- Sorting function based on time
+local function sort_tasks_by_time(lines)
+	table.sort(lines, function(a, b)
+		local time_a = a:match("^(%d%d:%d%d [APM]+)")
+		local time_b = b:match("^(%d%d:%d%d [APM]+)")
+		if time_a and time_b then
+			return convert_to_24_hour(time_a) < convert_to_24_hour(time_b)
+		else
+			return a < b
+		end
+	end)
+end
+
 local function setup_highlight(color)
 	vim.cmd("highlight NowHighlight guifg=" .. color .. " gui=bold ctermfg=198 cterm=bold ctermbg=black")
 end
@@ -373,6 +401,7 @@ function M.write_to_file()
 	end
 
 	-- Write each time block on a new line
+	sort_tasks_by_time(M.blocks)
 	for time_string, task in pairs(M.blocks) do
 		file:write(time_string .. ": " .. task .. "\n")
 	end
