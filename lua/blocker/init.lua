@@ -395,6 +395,7 @@ function M.write_to_file()
 	-- Dynamically get the correct file path
 	local filename = get_blockfile_path()
 
+	print("FILE: " .. filename)
 	local file = io.open(filename, "w")
 	if not file then
 		return
@@ -413,6 +414,7 @@ function M.load_from_file()
 	local filename = get_blockfile_path()
 
 	local file = io.open(filename, "r")
+	print("FILE: " .. filename)
 	if not file then
 		return
 	end
