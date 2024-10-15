@@ -387,34 +387,40 @@ function M.get_offset_time_string(time_string, offset)
 end
 
 local function get_blockfile_path()
-	local filename = os.date("%Y-%m-%d") .. ".txt" -- Example: 2024-10-04.txt
+	local filename = os.date("%Y-%m-%d") .. ".md" -- Example: 2024-10-04.txt
 	return vim.fn.expand(M.options.blockfile_dir .. "/" .. filename)
 end
 
 function M.write_to_file()
-	-- Dynamically get the correct file path
+	-- Get the correct file path dynamically
 	local filename = get_blockfile_path()
 
-	print("FILE: " .. filename)
 	local file = io.open(filename, "w")
 	if not file then
 		return
 	end
 
-	-- Write each time block on a new line
+	-- Write a heading for the file (e.g., "## Time Blocks for YYYY-MM-DD")
+	file:write("## Time Blocks for " .. os.date("%Y-%m-%d") .. "\n\n")
+
+	-- Write each time block with task in Markdown-like format
 	sort_tasks_by_time(M.blocks)
 	for time_string, task in pairs(M.blocks) do
-		file:write(time_string .. ": " .. task .. "\n")
+		if task and task ~= "" then
+			file:write("- **" .. time_string .. "**: " .. task .. "\n")
+		else
+			file:write("- **" .. time_string .. "**: No task\n")
+		end
 	end
+
 	file:close()
 end
 
 function M.load_from_file()
-	-- Dynamically get the correct file path
+	-- Get the correct file path dynamically
 	local filename = get_blockfile_path()
 
 	local file = io.open(filename, "r")
-	print("FILE: " .. filename)
 	if not file then
 		return
 	end
@@ -422,12 +428,15 @@ function M.load_from_file()
 	-- Clear the current blocks
 	M.blocks = {}
 
-	-- Read each line and split by the first colon to extract time_string and task
+	-- Read each line and extract time and task from the Markdown-like format
 	for line in file:lines() do
-		-- local time_string, task = line:match("^(.-):%s*(.*)$")
-		local time_string, task = line:match("^(%d%d:%d%d [APM]+):%s*(.*)$")
-
+		-- Match lines like: "- **08:00 AM**: Task for 08:00 AM"
+		local time_string, task = line:match("%- %*%*(%d%d:%d%d [APM]+)%*%*: (.*)")
 		if time_string and task then
+			-- If the task says "No task", store it as an empty string
+			if task == "No task" then
+				task = ""
+			end
 			M.blocks[time_string] = task
 		end
 	end
@@ -439,13 +448,17 @@ end
 -- 	-- Dynamically get the correct file path
 -- 	local filename = get_blockfile_path()
 --
+-- 	print("FILE: " .. filename)
 -- 	local file = io.open(filename, "w")
 -- 	if not file then
 -- 		return
 -- 	end
 --
--- 	local serialized_data = serpent.dump(M.blocks)
--- 	file:write(serialized_data)
+-- 	-- Write each time block on a new line
+-- 	sort_tasks_by_time(M.blocks)
+-- 	for time_string, task in pairs(M.blocks) do
+-- 		file:write(time_string .. ": " .. task .. "\n")
+-- 	end
 -- 	file:close()
 -- end
 --
@@ -454,17 +467,25 @@ end
 -- 	local filename = get_blockfile_path()
 --
 -- 	local file = io.open(filename, "r")
+-- 	print("FILE: " .. filename)
 -- 	if not file then
 -- 		return
 -- 	end
 --
--- 	local serialized_data = file:read("*all")
--- 	file:close()
+-- 	-- Clear the current blocks
+-- 	M.blocks = {}
 --
--- 	local loadFunction = load(serialized_data)
--- 	if loadFunction then
--- 		M.blocks = loadFunction()
+-- 	-- Read each line and split by the first colon to extract time_string and task
+-- 	for line in file:lines() do
+-- 		-- local time_string, task = line:match("^(.-):%s*(.*)$")
+-- 		local time_string, task = line:match("^(%d%d:%d%d [APM]+):%s*(.*)$")
+--
+-- 		if time_string and task then
+-- 			M.blocks[time_string] = task
+-- 		end
 -- 	end
+--
+-- 	file:close()
 -- end
 
 function M.setup(user_options)
